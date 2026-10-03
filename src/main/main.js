@@ -2,7 +2,8 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell, session } = require('electron');
+const downloads = require('./downloads');
 
 const PRODUCT = 'ECSend Pro';
 const COMPANY = 'Estalingrado Corp';
@@ -77,6 +78,35 @@ function createWindow() {
 
   win.webContents.loadURL('app://ecsendpro/index.html');
   return win;
+}
+
+/**
+ * Espera a que un archivo aparezca en la carpeta de descargas. Devuelve null si
+ * no llega en el plazo, para que el smoke test falle en vez de pasar en falso.
+ */
+function waitForDownload(dir, name, timeoutMs) {
+  const target = path.join(dir, name);
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const tick = () => {
+      let stat = null;
+      try {
+        stat = fs.statSync(target);
+      } catch {
+        stat = null;
+      }
+      if (stat && stat.size > 0) {
+        resolve({ path: target, name, bytes: stat.size });
+        return;
+      }
+      if (Date.now() > deadline) {
+        resolve(null);
+        return;
+      }
+      setTimeout(tick, 200);
+    };
+    setTimeout(tick, 400);
+  });
 }
 
 /**
@@ -244,6 +274,8 @@ function registerIpc() {
     isPackaged: app.isPackaged
   }));
 
+  downloads.registerIpc();
+
   ipcMain.handle('shell:showItemInFolder', (_e, target) => {
     if (typeof target === 'string' && target) shell.showItemInFolder(target);
     return true;
@@ -274,6 +306,14 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     serveRenderer(rendererRoot);
     registerIpc();
+    downloads.setup({ getWindow: () => win });
+
+    // Permisos de cámara/micrófono: auto-aceptar para que html5-qrcode funcione
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+      if (permission === 'media') callback(true);
+      else callback(false);
+    });
+
     createWindow();
     if (!SMOKE) createTray();
     if (SMOKE) runSmokeTest(win);

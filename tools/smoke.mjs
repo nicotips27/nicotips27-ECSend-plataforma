@@ -14,11 +14,11 @@ function electronBinary() {
 const args = process.argv.slice(2);
 
 /**
- * Sin argumentos corre el electron de node_modules sobre el repo.
- * Con un .exe corre esa app ya empaquetada, para verificar el artefacto real.
+ * Sin argumentos corre el electron de node_modules sobre el repo (pasa '.').
+ * Con un .exe corre esa app ya empaquetada (sin args extra).
  */
 let cmd = electronBinary();
-let cmdArgs = [];
+let cmdArgs = args.length ? args.slice(0) : ['.'];
 
 if (args.length) {
   cmd = path.resolve(args[0]);
@@ -26,7 +26,10 @@ if (args.length) {
     console.error(`No existe: ${cmd}`);
     process.exit(1);
   }
-  cmdArgs = args.slice(1);
+  // Si es .exe, no pasar más args (el smoke test usa env var)
+  if (cmd.toLowerCase().endsWith('.exe')) {
+    cmdArgs = [];
+  }
 }
 
 const child = spawn(cmd, [...cmdArgs, '--no-sandbox'], {
