@@ -34,6 +34,8 @@
             color: #f4f4f5;
             -webkit-tap-highlight-color: transparent;
             touch-action: pan-y;
+            /* Espacio para titleBarOverlay de Electron (44px) en Windows */
+            padding-top: env(titlebar-area-y, 44px);
         }
 
         /* FIX CRÍTICO: Tailwind (Play CDN) genera .hidden y .flex con igual especificidad.
