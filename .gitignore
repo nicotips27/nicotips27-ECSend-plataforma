@@ -3,6 +3,7 @@ dist/
 out/
 vendor-tmp/
 build/png/
+.upstream/
 *.log
 npm-debug.log*
 Thumbs.db

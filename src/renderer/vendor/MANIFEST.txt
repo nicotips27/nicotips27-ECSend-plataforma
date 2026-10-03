@@ -1,0 +1,7 @@
+/* vendorizado automaticamente por tools/sync-vendor.mjs */
+
+  lucide.min.js                         356713 B  sha256:undefined  https://unpkg.com/lucide@0.462.0/dist/umd/lucide.min.js
+  html5-qrcode.min.js                   375364 B  sha256:undefined  https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js
+  peerjs.min.js                          94430 B  sha256:undefined  https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js
+  qrious.min.js                          17579 B  sha256:undefined  https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js
+  tsparticles.slim.bundle.min.js        149237 B  sha256:undefined  https://cdn.jsdelivr.net/npm/tsparticles-slim@2.0.6/tsparticles.slim.bundle.min.js

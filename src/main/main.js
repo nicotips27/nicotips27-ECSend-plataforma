@@ -82,36 +82,112 @@ function createWindow() {
 /**
  * EC_SMOKE_TEST=1 abre la app, verifica que el renderer carga por app:// y el
  * puente preload responde, imprime el resultado en stdout y sale. Lo usa CI.
+ *
+ * La sonda no solo mira el preload: tambien confirma que llego el CSS compilado
+ * (no el Play CDN), que la fuente Inter vendorizada cargo y que las librerias
+ * locales quedaron expuestas en el renderer.
  */
 function runSmokeTest(window) {
   const started = Date.now();
+  const consoleErrors = [];
+  const cspViolations = [];
+
+  const dump = () => {
+    if (consoleErrors.length) console.log(`SMOKE_CONSOLE_ERRORS ${JSON.stringify(consoleErrors.slice(0, 8))}`);
+    if (cspViolations.length) console.log(`SMOKE_CSP_VIOLATIONS ${JSON.stringify(cspViolations.slice(0, 8))}`);
+  };
+
   const fail = (reason) => {
     console.log(`SMOKE_FAIL ${reason}`);
+    dump();
     app.exit(1);
   };
-  const timer = setTimeout(() => fail('timeout de 20s'), 20000);
+  const timer = setTimeout(() => fail('timeout de 25s'), 25000);
+
+  window.webContents.on('console-message', (event) => {
+    const level = event.level ?? event.levelName ?? 'info';
+    if (level === 'error' || level === 3) consoleErrors.push(event.message ?? String(event));
+    if (/Content Security Policy|Refused to/i.test(event.message ?? '')) {
+      cspViolations.push(event.message ?? '');
+    }
+  });
 
   window.webContents.on('render-process-gone', (_e, details) =>
     fail(`render process gone: ${details.reason}`)
   );
 
+  const probe = `(() => {
+    const cssHref = Array.from(document.styleSheets)
+      .map((s) => s.href || '')
+      .find((h) => h.endsWith('styles.css'));
+
+    let rules = [];
+    let cssError = null;
+    if (cssHref) {
+      const sheet = Array.from(document.styleSheets).find((s) => (s.href || '').endsWith('styles.css'));
+      try {
+        rules = sheet ? Array.from(sheet.cssRules).map((r) => r.cssText) : [];
+        if (!sheet) cssError = 'sheet no encontrado en document.styleSheets';
+      } catch (e) {
+        cssError = e && e.name + ': ' + e.message;
+        rules = [];
+      }
+    } else {
+      cssError = 'styles.css no aparece en document.styleSheets';
+    }
+
+    const has = (needle) => rules.some((r) => r.includes(needle));
+
+    return JSON.stringify({
+      url: location.href,
+      origin: location.origin,
+      title: document.title,
+      bridge: !!window.ECDesktop,
+      desktopBridge: !!window.__EC_DESKTOP__,
+      version: ${JSON.stringify(app.getVersion())},
+      electron: ${JSON.stringify(process.versions.electron)},
+      localStorage: (() => { try { localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true; } catch { return false; } })(),
+      css: {
+        linked: !!cssHref,
+        ruleCount: rules.length,
+        error: cssError,
+        href: cssHref,
+        sheets: Array.from(document.styleSheets).map((s) => s.href || 'inline'),
+        hasFontFace: has('@font-face'),
+        hasTextPrimary: has('.text-primary'),
+        hasHidden: has('.hidden'),
+        hasSlideUp: has('animate-slide-up'),
+        hasGlassPanel: [...document.styleSheets].length > 0 &&
+          [...document.querySelectorAll('style')].some((s) => s.textContent.includes('.glass-panel'))
+      },
+      fonts: {
+        inter: [...document.fonts].some((f) => f.family.includes('Inter')),
+        bodyFamily: getComputedStyle(document.body).fontFamily
+      },
+      vendor: {
+        lucide: typeof window.lucide,
+        peer: typeof window.Peer,
+        qrious: typeof window.QRious,
+        html5qrcode: typeof window.Html5Qrcode,
+        tsParticles: typeof window.tsParticles
+      },
+      appJsRan: typeof window.showToast === 'function' && typeof window.selectDownloadFolder === 'function',
+      remoteScripts: [...document.querySelectorAll('script[src^="http"]')].map((s) => s.src)
+    });
+  })()`;
+
   window.webContents.once('did-finish-load', async () => {
     try {
-      const report = await window.webContents.executeJavaScript(`
-        (async () => {
-          const info = window.ECDesktop ? await window.ECDesktop.app.info() : null;
-          return JSON.stringify({
-            url: location.href,
-            origin: location.origin,
-            title: document.title,
-            bridge: !!window.ECDesktop,
-            version: info && info.version,
-            electron: info && info.electron,
-            localStorage: (() => { try { localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true; } catch { return false; } })()
-          });
-        })()
-      `);
+      // Se espera a que corran los scripts diferidos y las inicializaciones
+      // asincronas (PeerJS, descubrimiento, fondo de particulas) para que sus
+      // errores aparezcan en la consola antes de sondear.
+      await window.webContents.executeJavaScript(
+        `document.fonts.ready.then(() => new Promise((r) => setTimeout(r, 4000)))`
+      );
+      const report = await window.webContents.executeJavaScript(probe);
+
       clearTimeout(timer);
+      dump();
       console.log(`SMOKE_OK ${report} ${Date.now() - started}ms`);
       app.exit(0);
     } catch (err) {

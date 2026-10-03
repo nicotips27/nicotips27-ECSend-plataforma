@@ -11,8 +11,25 @@ function electronBinary() {
   throw new Error('electron no esta instalado. Ejecuta: npm install');
 }
 
-const args = process.argv.slice(2).length ? process.argv.slice(2) : ['.'];
-const child = spawn(electronBinary(), [...args, '--no-sandbox'], {
+const args = process.argv.slice(2);
+
+/**
+ * Sin argumentos corre el electron de node_modules sobre el repo.
+ * Con un .exe corre esa app ya empaquetada, para verificar el artefacto real.
+ */
+let cmd = electronBinary();
+let cmdArgs = [];
+
+if (args.length) {
+  cmd = path.resolve(args[0]);
+  if (!existsSync(cmd)) {
+    console.error(`No existe: ${cmd}`);
+    process.exit(1);
+  }
+  cmdArgs = args.slice(1);
+}
+
+const child = spawn(cmd, [...cmdArgs, '--no-sandbox'], {
   cwd: ROOT,
   env: { ...process.env, EC_SMOKE_TEST: '1' },
   stdio: ['ignore', 'pipe', 'pipe']
