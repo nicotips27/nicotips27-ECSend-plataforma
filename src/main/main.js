@@ -15,10 +15,13 @@ const SMOKE = process.env.EC_SMOKE_TEST === '1';
 
 const rendererRoot = path.join(__dirname, '..', 'renderer');
 
-function iconPath() {
+/**
+ * Resuelve un icono de build/ tanto en desarrollo como en el paquete instalado.
+ */
+function iconPath(name = 'icon.ico') {
   const candidates = [
-    path.join(__dirname, '..', '..', 'build', 'icon.ico'),
-    path.join(process.resourcesPath || '', 'icon.ico')
+    path.join(__dirname, '..', '..', 'build', name),
+    path.join(process.resourcesPath || '', name)
   ];
   return candidates.find((p) => p && fs.existsSync(p)) || '';
 }
@@ -119,7 +122,7 @@ function runSmokeTest(window) {
 
 function createTray() {
   try {
-    tray = new Tray(iconPath());
+    tray = new Tray(iconPath('tray.ico'));
   } catch {
     tray = null;
     return;

@@ -2,6 +2,7 @@ node_modules/
 dist/
 out/
 vendor-tmp/
+build/png/
 *.log
 npm-debug.log*
 Thumbs.db

@@ -1,75 +1,91 @@
-import { writeFile, mkdir, readFile } from 'node:fs/promises';
-import { createWriteStream, readFileSync } from 'node:fs';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { writeFile, readFile, mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const exec = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD = path.join(ROOT, 'build');
-const TMP = path.join(ROOT, 'vendor-tmp');
+const PNG = path.join(BUILD, 'png');
+const MASTER = path.join(ROOT, 'icono', 'logo.jpg');
 
-const SOURCES = [
-  { name: 'logo.png', url: 'https://raw.githubusercontent.com/Estalingradocorp/ECsendpro/main/assets/logo.png' },
-  { name: 'icon-512.png', url: 'https://raw.githubusercontent.com/Estalingradocorp/ECsendpro/main/assets/icon-512.png' },
-  { name: 'icon-192.png', url: 'https://raw.githubusercontent.com/Estalingradocorp/ECsendpro/main/assets/icon-192.png' }
-];
-
-async function download({ name, url }) {
-  await mkdir(TMP, { recursive: true });
-  const target = path.join(TMP, name);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(target));
-  return target;
-}
+const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
 
 function pngSize(file) {
   const b = readFileSync(file);
   return `${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`;
 }
 
+async function hasAlpha(file) {
+  const b = readFileSync(file);
+  return b[25] === 6 || b[25] === 4; // color type 6 = RGBA, 4 = gray+alpha
+}
+
+async function ensurePngs() {
+  try {
+    await readFile(path.join(PNG, `logo-${ICO_SIZES.at(-1)}.png`));
+    return 'cache';
+  } catch {
+    /* hay que generarlos */
+  }
+  await exec(
+    'powershell',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(ROOT, 'tools', 'convert-icon.ps1')],
+    { windowsHide: true }
+  );
+  return 'generados';
+}
+
 async function main() {
   await mkdir(BUILD, { recursive: true });
 
-  const downloaded = [];
-  for (const src of SOURCES) {
-    process.stdout.write(`Descargando ${src.name} ... `);
-    try {
-      downloaded.push(await download(src));
-      console.log(`ok (${await pngSize(downloaded.at(-1))})`);
-    } catch (err) {
-      console.log(`FALLO (${err.message})`);
-    }
+  try {
+    await readFile(MASTER);
+  } catch {
+    console.error(`Falta el logo maestro: ${MASTER}`);
+    process.exit(1);
   }
 
-  if (downloaded.length === 0) throw new Error('No se pudo descargar ningun recurso del sitio.');
+  const state = await ensurePngs();
+  console.log(`PNG de trabajo: ${state}`);
+
+  const sources = [];
+  for (const size of ICO_SIZES) {
+    const file = path.join(PNG, `logo-${size}.png`);
+    await readFile(file);
+    sources.push(file);
+  }
+
+  const large = sources.at(-1);
+  const alpha = await hasAlpha(large);
+  console.log(`Fuente: icono/logo.jpg (${pngSize(large)} px, alfa: ${alpha ? 'si' : 'NO'})`);
+  if (!alpha) {
+    console.log('Aviso: la fuente es JPEG, sin transparencia. Para la bandeja de Windows');
+    console.log('       conviene un PNG con fondo transparente en icono/logo.png');
+  }
 
   const { default: pngToIco } = await import('png-to-ico');
-  const sizes = [16, 24, 32, 48, 64, 128, 256];
-  const primary = downloaded[0];
 
-  for (const [outName, source] of [
-    ['icon.ico', primary],
-    ['installerIcon.ico', downloaded[1] ?? primary]
-  ]) {
-    const buf = await pngToIco(source, { sizes, bitDepth: 32 });
-    await writeFile(path.join(BUILD, outName), buf);
-    console.log(`build/${outName}  ${(buf.length / 1024).toFixed(1)} KB  (${sizes.join('/')} px)`);
+  const outputs = [
+    ['icon.ico', sources],
+    ['installerIcon.ico', sources],
+    ['tray.ico', sources.filter((_, i) => ICO_SIZES[i] <= 64)]
+  ];
+
+  for (const [name, files] of outputs) {
+    const buf = await pngToIco(files);
+    await writeFile(path.join(BUILD, name), buf);
+    console.log(`build/${name}  ${(buf.length / 1024).toFixed(1)} KB  (${files.length} resoluciones)`);
   }
 
-  for (const src of SOURCES) {
-    const file = path.join(TMP, src.name);
-    try {
-      await readFile(file);
-    } catch {
-      continue;
-    }
-    await writeFile(path.join(ROOT, 'src', 'renderer', 'assets', src.name), readFileSync(file));
-    console.log(`src/renderer/assets/${src.name}`);
-  }
+  console.log('build/icon.ico           app, ventana y acceso directo');
+  console.log('build/installerIcon.ico  instalador NSIS');
+  console.log('build/tray.ico           bandeja del sistema');
 }
 
 main().catch((err) => {
-  console.error('build-icons fallo:', err.message);
+  console.error('build-icons fallo:', err && err.stack ? err.stack : err);
   process.exit(1);
 });
