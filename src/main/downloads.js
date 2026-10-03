@@ -10,9 +10,15 @@ function setup({ getWindow }) {
   winGetter = getWindow;
   const ses = require('electron').session.defaultSession;
 
+  // La carpeta por defecto tiene que existir ANTES de la primera descarga.
+  // Si no, setSavePath() apunta a un directorio inexistente y la descarga
+  // falla en silencio: el usuario recibe el archivo y no aparece en el disco.
+  ensureDownloadFolder(getDownloadFolder());
+
   ses.on('will-download', (event, item, webContents) => {
     const win = winGetter ? winGetter() : null;
     const folder = getDownloadFolder();
+    ensureDownloadFolder(folder);
 
     const originalFilename = item.getFilename();
     const safeName = sanitizeFilename(originalFilename);
@@ -72,6 +78,19 @@ function sanitizeFilename(name) {
     .substring(0, 180);
 }
 
+function ensureDownloadFolder(folder) {
+  try {
+    if (!fs.existsSync(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+      console.log(`[downloads] carpeta creada: ${folder}`);
+    }
+    return true;
+  } catch (err) {
+    console.error(`[downloads] no se pudo crear la carpeta ${folder}:`, err.message);
+    return false;
+  }
+}
+
 function getDownloadFolder() {
   const settings = getSettings();
   if (settings.downloadDir && fs.existsSync(settings.downloadDir)) {
@@ -116,14 +135,17 @@ function registerIpc() {
     });
     if (!result.canceled && result.filePaths.length) {
       const folder = result.filePaths[0];
+      ensureDownloadFolder(folder);
       saveSettings({ downloadDir: folder });
-      return { success: true, folder };
+      return { success: true, folder, isCustom: true };
     }
     return { success: false };
   });
 
   ipcMain.handle('downloads:get-folder', () => {
-    return { folder: getDownloadFolder() };
+    const settings = getSettings();
+    const custom = !!(settings.downloadDir && fs.existsSync(settings.downloadDir));
+    return { folder: getDownloadFolder(), isCustom: custom };
   });
 
   ipcMain.handle('downloads:clear-folder', () => {
@@ -146,19 +168,6 @@ function registerIpc() {
     }
     return false;
   });
-
-  ipcMain.handle('downloads:save-received', async (_e, filePath, blobData) => {
-    try {
-      const buffer = Buffer.from(blobData);
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath, buffer);
-      return { success: true };
-    } catch (err) {
-      console.error('[downloads] save-received error:', err);
-      return { success: false, error: String(err) };
-    }
-  });
 }
 
-module.exports = { setup, registerIpc, getDownloadFolder, getSettings, saveSettings, sanitizeFilename };
+module.exports = { setup, registerIpc, getDownloadFolder, getSettings, saveSettings, sanitizeFilename, ensureDownloadFolder };

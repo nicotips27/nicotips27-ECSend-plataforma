@@ -13,6 +13,14 @@ files:
 
 asar: true
 
+# Sin esto los .ico no entran al asar y la app instalada queda sin icono de
+# ventana ni de bandeja: iconPath() no encuentra nada en tiempo de ejecucion.
+extraResources:
+  - from: build
+    to: build
+    filter:
+      - "*.ico"
+
 win:
   target:
     - target: nsis

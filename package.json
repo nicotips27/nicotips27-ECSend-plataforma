@@ -19,7 +19,7 @@
     "import:site": "node tools/import-site.mjs",
     "sync": "node tools/sync-from-site.mjs",
     "verify": "npm run lint && npm run smoke",
-    "lint": "node --check src/main/main.js && node --check src/main/protocol.js && node --check src/preload/preload.js && node --check src/renderer/js/boot.js",
+    "lint": "node tools/lint.mjs",
     "smoke": "node tools/smoke.mjs",
     "dist": "electron-builder --win --x64 --publish never",
     "dist:dir": "electron-builder --win --x64 --dir --publish never"

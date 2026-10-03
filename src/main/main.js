@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell, session } = require('electron');
+const { app, BrowserWindow, Menu, Tray, Notification, dialog, ipcMain, shell, session } = require('electron');
 const downloads = require('./downloads');
 
 const PRODUCT = 'ECSend Pro';
@@ -216,13 +216,66 @@ function runSmokeTest(window) {
       );
       const report = await window.webContents.executeJavaScript(probe);
 
+      // Prueba de descarga de verdad. El sitio, al recibir un archivo por el
+      // DataChannel, reconstruye un Blob y dispara un <a download>. Electron
+      // lo intercepta con will-download y lo escribe en la carpeta configurada.
+      // Si esa carpeta no existe, la descarga falla en silencio: el usuario ve
+      // el archivo "recibido" pero no aparece en el disco. Esto lo verifica.
+      const dlName = `smoke-${process.pid}.txt`;
+      const payload = 'ECSendPro smoke test '.repeat(64);
+      await window.webContents.executeJavaScript(`
+        (() => {
+          const blob = new Blob([${JSON.stringify(payload)}], { type: 'text/plain' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = ${JSON.stringify(dlName)};
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          return true;
+        })()
+      `);
+
+      const written = await waitForFile(
+        downloads.getDownloadFolder(),
+        dlName,
+        12000
+      );
+
       clearTimeout(timer);
       dump();
+
+      if (!written) {
+        console.log(`SMOKE_FAIL la descarga no llego al disco en ${downloads.getDownloadFolder()}`);
+        app.exit(1);
+      }
+
+      console.log(`SMOKE_DOWNLOAD ok ${written.name} ${written.size} bytes -> ${written.path}`);
       console.log(`SMOKE_OK ${report} ${Date.now() - started}ms`);
       app.exit(0);
     } catch (err) {
       fail(`executeJavaScript: ${err.message}`);
     }
+  });
+}
+
+/**
+ * Espera a que aparezca un archivo en disco. El smoke test la necesita porque
+ * will-download escribe de forma asincrona y el renderer ya(io)nio hizo click.
+ */
+function waitForFile(folder, name, timeoutMs) {
+  const target = path.join(folder, name);
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const tick = () => {
+      try {
+        const st = fs.statSync(target);
+        if (st.size > 0) return resolve({ name, path: target, size: st.size });
+      } catch { /* todavia no esta */ }
+      if (Date.now() > deadline) return resolve(null);
+      setTimeout(tick, 150);
+    };
+    tick();
   });
 }
 
@@ -275,6 +328,18 @@ function registerIpc() {
   }));
 
   downloads.registerIpc();
+
+  ipcMain.handle('notify:show', (_e, options = {}) => {
+    if (!win || win.isDestroyed()) return false;
+    const n = new Notification({
+      title: typeof options.title === 'string' ? options.title : PRODUCT,
+      body: typeof options.body === 'string' ? options.body : '',
+      icon: iconPath('icon.ico')
+    });
+    n.on('click', () => showWindow());
+    n.show();
+    return true;
+  });
 
   ipcMain.handle('shell:showItemInFolder', (_e, target) => {
     if (typeof target === 'string' && target) shell.showItemInFolder(target);

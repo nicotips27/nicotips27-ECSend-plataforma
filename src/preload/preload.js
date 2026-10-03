@@ -26,11 +26,24 @@ contextBridge.exposeInMainWorld('ECDesktop', {
     clearFolder: () => invoke('downloads:clear-folder'),
     reveal: (path) => invoke('downloads:reveal', path),
     open: (path) => invoke('downloads:open', path),
-    saveReceived: (path, blob) => invoke('downloads:save-received', path, blob),
     onProgress: (cb) => subscribe('download:progress', cb),
     onCompleted: (cb) => subscribe('download:completed', cb),
     onFailed: (cb) => subscribe('download:failed', cb)
   },
+
+  cameras: {
+    // En Electron no hay facingMode como en movil: hay que pasar un deviceId
+    // concreto de la lista real de dispositivos.
+    list: async () => {
+      if (!navigator.mediaDevices?.enumerateDevices) return [];
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices
+        .filter((d) => d.kind === 'videoinput')
+        .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Camara ${i + 1}` }));
+    }
+  },
+
+  notify: (options) => invoke('notify:show', options),
 
   shell: {
     showItemInFolder: (target) => invoke('shell:showItemInFolder', target),
