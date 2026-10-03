@@ -1,0 +1,32 @@
+{
+  "name": "ecsendpro-desktop",
+  "productName": "ECSend Pro",
+  "version": "8.9.0",
+  "description": "Transferencia de archivos P2P entre dispositivos, directo y sin servidores. Estalingrado Corp.",
+  "author": {
+    "name": "Estalingrado Corp",
+    "email": "estalingradocorp@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/nicotips27/ECsendpro-desktop",
+  "license": "MIT",
+  "private": true,
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "icons": "node tools/build-icons.mjs",
+    "css": "node tools/build-css.mjs",
+    "vendor": "node tools/sync-vendor.mjs",
+    "sync": "node tools/sync-from-site.mjs",
+    "verify": "npm run lint && npm run smoke",
+    "lint": "node --check src/main/main.js && node --check src/main/protocol.js && node --check src/preload/preload.js && node --check src/renderer/js/boot.js",
+    "smoke": "node tools/smoke.mjs",
+    "dist": "electron-builder --win --x64 --publish never",
+    "dist:dir": "electron-builder --win --x64 --dir --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "electron-updater": "6.8.9",
+    "png-to-ico": "3.0.2"
+  }
+}

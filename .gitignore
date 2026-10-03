@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+vendor-tmp/
+*.log
+npm-debug.log*
+Thumbs.db
+.DS_Store
+.env

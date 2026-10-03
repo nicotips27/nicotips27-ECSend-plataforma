@@ -1,0 +1,47 @@
+appId: com.estalingradocorp.ecsendpro
+productName: ECSend Pro
+copyright: Copyright © 2026 Estalingrado Corp
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**/*
+  - package.json
+  - "!**/*.map"
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  executableName: ECSendPro
+  requestedExecutionLevel: asInvoker
+  legalTrademarks: Estalingrado Corp
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ECSend Pro
+  menuCategory: false
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  installerIcon: build/installerIcon.ico
+  uninstallerIcon: build/installerIcon.ico
+  installerHeaderIcon: build/installerIcon.ico
+  language: "1034"
+  artifactName: "ECSendPro-Setup-${version}.${ext}"
+
+publish:
+  provider: github
+  owner: nicotips27
+  repo: ECsendpro-desktop
+  releaseType: release
