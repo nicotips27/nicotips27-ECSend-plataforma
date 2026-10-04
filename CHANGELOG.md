@@ -1,0 +1,108 @@
+# Changelog — ECSend Pro Desktop
+
+Todas las novedades de la app de escritorio de ECSend Pro para Windows.
+El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el
+versionado es [SemVer](https://semver.org/lang/es/).
+
+La versión acompaña a la del sitio web (`Estalingradocorp/ECsendpro`).
+
+---
+
+## [No publicado]
+
+### Corregido
+- **Barra de título nativa tapaba la interfaz** (dos correcciones sucesivas):
+  - `viewport-fit=cover` eliminado del `viewport`; hacía que el contenido se
+    metiera bajo la barra nativa de 44 px.
+  - `padding-top` del `body` hardcodeado a 44 px. La función `env(titlebar-area-y)`
+    solo existe en iOS Safari: en Windows devolvía su valor de reserva y el
+    contenido quedaba bajo los botones de cerrar/minimizar/maximizar.
+  - `splash` y `dynamic-bg` pasaron de `inset-0` a `top-[44px]`.
+
+---
+
+## [8.9.0] — 2026-10-03
+
+Primera versión del programa nativo de Windows. Instala, arranca y transfiere.
+
+### Agregado
+- **App de escritorio Electron** con el núcleo P2P del sitio web importado
+  **verbatim**: WebRTC DataChannel, códigos de 6 dígitos rotativos, QR, chat
+  cifrado, descubrimiento en red y envío en lote.
+- **Esquema `app://ecsendpro`** privilegiado en lugar de `file://`. Sin esto
+  `localStorage` e IndexedDB quedan en un origen opaco y los ajustes y el
+  historial se pierden en cada reinicio.
+- **Instalador NSIS** en español, por usuario, con atajos de Escritorio y Menú
+  Inicio, elección de carpeta y desinstalación limpia.
+- **Identidad Estalingrado Corp:** íconos `.ico` de 7 resoluciones generados
+  desde `icono/logo.jpg`, `tray.ico` separado para la bandeja, splash con el
+  logo, y se mantiene la publicidad de Estalingrado Market.
+- **Vendor offline completo:** lucide, peerjs, qrious, html5-qrcode,
+  tsparticles-slim e Inter (5 pesos, subset latin). La app abre y funciona sin
+  internet.
+- **Tailwind v3.4 compilado** a `styles.css` (33.4 KB, 484 reglas), con
+  `safelist` para las 6 variables de clase que en `app.js` solo existen
+  interpoladas en plantillas.
+- **CSP de escritorio** (`script-src 'self' https://cdn.jsdelivr.net`): la app
+  no carga ningún `<script>` remoto salvo Trystero, que se importa por
+  `import()` dinámico y no tiene bundle standalone.
+- **Descargas nativas:** `session.on('will-download')` intercepta y escribe en
+  una carpeta configurable (`Documentos/ECSendPRO` por defecto), con dedupe
+  `(1)`, progreso por IPC y notificación nativa al completar.
+- **Cámara/QR:** permiso de media auto-aceptado y `enumerateDevices` en el
+  renderer para reemplazar el `facingMode` del sitio, que Electron no soporta.
+- **Bandeja del sistema**, instancia única, revelar en Explorador y abrir
+  carpeta.
+- **`npm run verify`** (`lint` + `smoke`): el smoke test valida origen `app://`,
+  CSS compilado, fuente Inter, las 5 librerías en el renderer, que `app.js`
+  corrió, que no queden scripts remotos, que no haya violaciones de CSP y
+  **que un archivo real llegue al disco**.
+
+### Corregido
+Cinco bugs detectados en una auditoría del código, ninguno cubierto por el
+smoke test original:
+
+1. **CRÍTICO — la carpeta de descargas nunca se creaba.** `getDownloadFolder()`
+   devolvía `Documentos/ECSendPRO` sin crearla; `will-download` escribía con
+   `setSavePath()` sobre un directorio inexistente y **la descarga fallaba en
+   silencio**: el usuario veía el archivo como recibido y no aparecía en disco.
+   Ahora `ensureDownloadFolder()` la crea al arrancar y antes de cada descarga.
+2. **CRÍTICO — `window.downloadDirHandle` era un getter sin setter.** El sitio
+   usa su propia variable local (`app.js:544`) y asigna en `app.js:612`, con lo
+   cual la asignación fallaba en silencio. Además el handle se guardaba en
+   IndexedDB conteniendo funciones → `DataCloneError` y el toast "Error al
+   seleccionar carpeta". Se eliminaron los handles falsos.
+3. **CRÍTICO — un `Blob` viajaba por `ipcRenderer.invoke`.** No es clonable por
+   IPC (`DataCloneError`) y ese camino estaba muerto: `will-download` ya resuelve
+   la escritura. Se eliminó el handler.
+4. **ALTO — overrides puestos antes de `app.js`.** Los scripts diferidos se
+   ejecutan en orden de documento, así que `app.js` pisaba
+   `selectDownloadFolder` y `clearDownloadPath`. Ahora se aplican después, en
+   `DOMContentLoaded`.
+5. **ALTO — `build/` no estaba en el asar.** La app instalada arrancaba sin
+   ícono de ventana ni de bandeja. Resuelto con `extraResources`.
+
+### Decisiones técnicas
+- **Tailwind v3.4, no v4.** El sitio corre sobre Play CDN v3 y tiene 59 usos de
+  `border` sin color explícito más un `shadow-sm`. En v4 el color de borde por
+  defecto pasa a `currentColor` y `shadow-sm` pasa a `shadow-xs`: migrar
+  habría cambiado el diseño en silencio.
+- **Fork de primera clase, no parches.** `tools/import-site.mjs` aplica las
+  sustituciones con anclas exactas y **aborta** si el sitio cambió algo, para no
+  dejar el fork roto en silencio. `tools/sync-from-site.mjs` solo muestra el
+  diff.
+- **Trystero sigue remoto a propósito.** No tiene bundle standalone y sus
+  relays nostr son servidores ajenos: el descubrimiento ya requiere internet
+  por diseño (ARCHITECTURE.md §12 del sitio).
+
+### Conocido
+- El instalador no está firmado: Windows SmartScreen muestra "editor
+  desconocido". Requiere un code-signing certificate EV/OV para eliminarlo.
+- La transferencia P2P real entre dos máquinas sigue sin verificación
+  automatizada: requiere hardware en la misma red.
+- El repo está bajo `nicotips27`; al transferirlo a `Estalingradocorp` hay que
+  actualizar `publish.owner` en `electron-builder.yml`.
+- La cámara no se ha probado con un dispositivo real en el entorno de build.
+
+[No publicado]: https://github.com/nicotips27/ECsendpro-desktop/compare/5d16e27...HEAD
+[8.9.0]: https://github.com/nicotips27/ECsendpro-desktop/releases/tag/v8.9.0

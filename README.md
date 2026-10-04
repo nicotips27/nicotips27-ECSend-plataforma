@@ -8,6 +8,16 @@ Los archivos viajan directo de un dispositivo a otro por **WebRTC DataChannel** 
 - **Empresa:** Estalingrado Corp
 - **Licencia:** MIT
 
+## Documentación
+
+| Documento | Para qué |
+|---|---|
+| `README.md` | Documentación técnica: arquitectura, Tailwind, CSP, comandos |
+| `BITACORA.md` | Bitácora del proyecto: cronología, decisiones, bugs, métricas |
+| `CHANGELOG.md` | Changelog con la 8.9.0 y todo lo corregido |
+| `dist/Historial chats/inicio.txt` | Bitácora reconstruida de la sesión de desarrollo |
+| `dist/Historial chats/bitacora.txt` | La bitácora en texto plano |
+
 ## Estado
 
 Fase 2 completa: el sitio web ya corre dentro del programa de escritorio, sin
@@ -17,11 +27,17 @@ depender de ningun CDN. Falta portar el comportamiento nativo (descargas, ajuste
 |---|---|---|
 | 1 | Repo, ventana oscura, protocolo `app://`, íconos, instalador NSIS | ✅ |
 | 2 | Dependencias vendorizadas + Tailwind compilado + CSP | ✅ |
-| 3 | Port del núcleo P2P (código, QR, DataChannel, chat, descubrimiento) | ⏳ |
-| 4 | Descargas, ajustes, cámara + integración nativa | ⏳ |
-| 5 | Identidad Estalingrado Corp | ⏳ |
+| 3 | Adaptaciones nativas (descargas, ajustes, cámara) + auditoría | ✅ |
+| 4 | Interfaz con la ventana nativa (titleBarOverlay) | ✅ |
+| 5 | Identidad Estalingrado Corp | ✅ |
 | 6 | Auto-actualización + CI de releases | ⏳ |
-| 7 | Docs y herramienta de sincronización con el sitio | parcial |
+| 7 | Transferencia real entre dos máquinas | ⏳ requiere hardware |
+
+### Pendiente de revisión visual
+
+El smoke test confirma que todo carga, pero **no puede ver la pantalla**. Queda
+a ojo: que la franja de 44 px de la barra nativa no tape el splash ni el header,
+y que el botón "Aceptar" del modal de transferencia responda al terminar.
 
 > `app.js` se importa **verbatim** del sitio: el núcleo P2P ya funciona dentro de
 > Electron sin tocar una línea. La Fase 3 es verificación en dos máquinas reales,

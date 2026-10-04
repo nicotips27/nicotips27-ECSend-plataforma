@@ -14,10 +14,11 @@
 3. [Decisiones Técnicas Clave](#decisiones-técnicas-clave)
 4. [Arquitectura](#arquitectura)
 5. [Bugs Críticos Detectados y Corregidos](#bugs-críticos-detectados-y-corregidos)
-6. [Métricas de Verificación](#métricas-de-verificación)
-7. [Estructura del Proyecto](#estructura-del-proyecto)
-8. [Próximos Pasos](#próximos-pasos)
-9. [Comandos de Desarrollo](#comandos-de-desarrollo)
+6. [Problemas de Interfaz con la Ventana Nativa](#problemas-de-interfaz-con-la-ventana-nativa)
+7. [Métricas de Verificación](#métricas-de-verificación)
+8. [Estructura del Proyecto](#estructura-del-proyecto)
+9. [Próximos Pasos](#próximos-pasos)
+10. [Comandos de Desarrollo](#comandos-de-desarrollo)
 
 ---
 
@@ -33,14 +34,30 @@ El sitio web original (`estalingradocorp.github.io/ECsendpro/`) es una SPA de 10
 
 ## CRONOLOGÍA DE HITOS
 
-| Fecha | Hito | Detalle |
-|-------|------|---------|
-| 2026-10-03 | Inicio del proyecto | Definición de alcance, stack, repo, decisiones iniciales |
-| 2026-10-03 | **Fase 1** completada | Esqueleto Electron: ventana, protocolo `app://`, iconos, instalador NSIS |
-| 2026-10-03 | **Fase 2** completada | Vendor offline (5 libs + Inter), Tailwind v3 compilado, CSP, import-site |
-| 2026-10-03 | **Fase 3** completada | Adaptaciones nativas + **Auditoría crítica** (5 bugs corregidos) |
-| 2026-10-03 | **Fase 4** completada | Fixes UI: padding `titleBarOverlay`, splash, botón Aceptar |
-| 2026-10-03 | Exportación documentación | Historial de chats + bitácora |
+| Fecha | Commit | Hito | Detalle |
+|-------|--------|------|---------|
+| 2026-10-03 | — | Inicio del proyecto | Definición de alcance, stack, repo, decisiones iniciales |
+| 2026-10-03 | `095c4b6` | **Fase 1** | Esqueleto Electron: ventana, protocolo `app://`, iconos, instalador NSIS |
+| 2026-10-03 | `1d63df4` | Identidad | Logo e iconos de Estalingrado Corp en toda la app |
+| 2026-10-03 | `3fcaae1` | **Fase 2** | Vendor offline (5 libs + Inter), Tailwind v3 compilado, CSP, import-site |
+| 2026-10-03 | `a1ef643` | **Fase 3** | Adaptaciones nativas (cámara, descargas, ajustes) — con bugs |
+| 2026-10-03 | `539e582` | **Auditoría** | 5 bugs críticos corregidos + lint anti-patrones + descarga real en smoke |
+| 2026-10-03 | `fb2b865` | **Fase 4** (intento 1) | `padding-top` con `env()` — no funcionó en Windows |
+| 2026-10-03 | `5d16e27` | **Fase 4** (intento 2) | `viewport-fit=cover` fuera, padding 44px fijo, splash `top-[44px]` |
+| 2026-10-03 | — | Documentación | README, BITACORA, CHANGELOG, export de sesión |
+
+### Lección registrada (Fase 4)
+
+El primer fix del `titleBarOverlay` usó `padding-top: env(titlebar-area-y, 44px)`.
+**`env(titlebar-area-*)` es una función de iOS Safari y no existe en Chromium de
+escritorio**: devolvía el valor de reserva y el contenido quedaba igual de mal.
+La causa real era doble —`viewport-fit=cover` empujaba el contenido bajo la barra
+nativa, y el `padding` nunca aplicó— así que hizo falta quitar el `viewport-fit`,
+poner el padding en píxeles fijos y bajar el `splash` a `top-[44px]`.
+
+También queda como lección: **un smoke test que solo verifica "la ventana carga" no
+detecta que las descargas fallen**. Por eso ahora el test exige que un archivo
+real llegue al disco (`SMOKE_DOWNLOAD`).
 
 ---
 
@@ -103,6 +120,48 @@ El sitio web original (`estalingradocorp.github.io/ECsendpro/`) es una SPA de 10
 | 5 | 🟠 **Alto** | `build/` no en asar | App instalada arrancaba **sin icono** de ventana ni bandeja | `extraResources` con `build/*.ico` en electron-builder |
 
 > **Lección:** El smoke test original solo verificaba que la ventana cargara. Ahora el test exige **descarga real a disco** (`SMOKE_DOWNLOAD`) y falla si el archivo no llega al disco.
+
+---
+
+## PROBLEMAS DE INTERFAZ CON LA VENTANA NATIVA
+
+Reporte del usuario: *"la ventana estorba la interfaz del sitio"* y *"los botones
+de cerrar/minimizar/cambiar tamaño siguen interfiriendo, la interfaz está
+incompleta"*.
+
+### Causa 1 — `viewport-fit=cover`
+La app móvil del sitio declara `viewport-fit=cover`, pensado para el notch del
+iPhone. En Electron eso empuja el contenido **hacia arriba**, debajo de la barra
+de título nativa de 44 px.
+
+**Fix:** quitar `viewport-fit=cover` del `<meta name="viewport">`.
+
+### Causa 2 — `env(titlebar-area-y)` no existe en Windows
+El primer intento usó `padding-top: env(titlebar-area-y, 44px)`.
+**Las variables `env(titlebar-area-*)` son exclusivas de iOS Safari**: en Chromium
+de escritorio la función no existe, así que devolvía el valor de reserva y el
+`padding` nunca surtió efecto.
+
+**Fix:** `padding-top: 44px` en píxeles fijos.
+
+### Causa 3 — `fixed inset-0` en el splash
+`#splash` y `#dynamic-bg` usaban `inset-0`, que cubre desde y=0 y por lo tanto
+pintaba encima de la zona de la barra nativa.
+
+**Fix:** `top-[44px]` en ambos, dejando la franja superior limpia para los
+botones del sistema.
+
+### Verificación pendiente de eyesight
+
+El smoke test confirma que el CSS carga y que la app arranca, pero **no puede
+comprobar que la franja de 44 px se vea bien**. Eso hay que mirarlo en la
+pantalla: abrir la app y verificar que el logo, el título y el splash no queden
+debajo de los botones de la ventana.
+
+Los modales (`modal-help`, `modal-qr`, `modal-privacy`, `modal-scanner`,
+`modal-transfer`, `modal-file-loading`, `modal-chat`) conservan `inset-0` a
+propósito: son capas a pantalla completa y deben poder cubrir el área de
+contenido.
 
 ---
 
@@ -176,12 +235,14 @@ ECsendpro-desktop/
 
 | Prioridad | Tarea | Detalle |
 |-----------|-------|---------|
-| 🔴 **Alta** | Probar transferencia real PC ↔ Móvil | Requiere 2 máquinas en misma red; validar handshake LAN + QR |
-| 🔴 **Alta** | Firmar instalador | Certificado code-signing EV/OV → elimina SmartScreen "editor desconocido" |
+| 🔴 **Alta** | **Verificar a ojo la barra de título** | El smoke test no ve la franja de 44 px. Abrir la app y confirmar que splash/header no quedan bajo los botones nativos |
+| 🔴 **Alta** | Probar transferencia real PC ↔ Móvil | Requiere 2 máquinas en misma red; validar handshake LAN + QR + botón "Aceptar" |
+| 🟠 **Media** | Firmar instalador | Certificado code-signing EV/OV → elimina SmartScreen "editor desconocido" |
 | 🟠 **Media** | Publicar release v8.9.0 | Tag `v8.9.0` → CI build → GitHub Release con `.exe` + `latest.yml` |
-| 🟠 **Media** | Transferir repo a Estalingradocorp | `gh repo transfer nicotips27/ECsendpro-desktop Estalingradocorp` + actualizar `publish.owner` |
+| 🟠 **Media** | Transferir repo a Estalingradocorp | `gh repo transfer` + actualizar `publish.owner` en `electron-builder.yml` |
+| 🟠 **Media** | Probar cámara con webcam real | El permission handler y `enumerateDevices` están implementados pero sin hardware verificado |
 | 🟢 **Baja** | Drag & drop nativo | `webUtils.getPathForFile` para archivos grandes desde Explorer |
-| 🟢 **Baja** | Accesos directos Jump List | "Nueva transferencia", "Abrir carpeta descargas" en botón derecho tray |
+| 🟢 **Baja** | Jump List de Windows | "Nueva transferencia", "Abrir carpeta descargas" en el menú del botón derecho |
 
 ---
 
