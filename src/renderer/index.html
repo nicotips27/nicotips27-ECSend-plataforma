@@ -2,7 +2,7 @@
 <html lang="es" class="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#09090b">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://static.wixstatic.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' https: wss:; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'">
     <meta name="description" content="ECSend Pro — Transferencia de archivos P2P cifrada de extremo a extremo entre dispositivos.">
@@ -28,14 +28,14 @@
     <style>
         @import url('vendor/fonts/inter.css');
         
-        body {
+body {
             font-family: 'Inter', sans-serif;
             background-color: #09090b;
             color: #f4f4f5;
             -webkit-tap-highlight-color: transparent;
             touch-action: pan-y;
-            /* Espacio para titleBarOverlay de Electron (44px) en Windows */
-            padding-top: env(titlebar-area-y, 44px);
+            /* Espacio para titleBarOverlay de Electron en Windows (44px fijo) */
+            padding-top: 44px;
         }
 
         /* FIX CRÍTICO: Tailwind (Play CDN) genera .hidden y .flex con igual especificidad.
@@ -136,10 +136,10 @@
         <span class="shrink-0 text-zinc-600 font-bold text-[8px] ml-2 animate-pulse">SYS.MONITOR</span>
     </div>
 
-    <div id="dynamic-bg" class="fixed inset-0 z-[-1] pointer-events-none transition-opacity duration-700 opacity-100">
+    <div id="dynamic-bg" class="fixed left-0 right-0 bottom-0 top-[44px] z-[-1] pointer-events-none transition-opacity duration-700 opacity-100">
     </div>
 
-    <div id="splash" class="fixed inset-0 z-[100] bg-dark flex flex-col items-center justify-center transition-opacity duration-700">
+    <div id="splash" class="fixed left-0 right-0 bottom-0 top-[44px] z-[100] bg-dark flex flex-col items-center justify-center transition-opacity duration-700">
         <img src="./assets/logo.png" class="loader-logo" alt="Logo" loading="lazy">
         <p class="text-base tracking-[4px] text-white mb-1 uppercase font-medium">ESTALINGRADO CORP</p>
         <div class="mb-5 text-[10px] text-primary tracking-[2px] uppercase">CONECTANDO PROTOCOLO P2P</div>
