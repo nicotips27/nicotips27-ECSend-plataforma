@@ -9,6 +9,17 @@ Los archivos viajan directo de un dispositivo a otro por **WebRTC DataChannel** 
 - **Empresa:** Estalingrado Corp
 - **Licencia:** MIT
 
+## Capturas
+
+<img src="docs/capturas/captura-01.png" width="480" alt="ECSend Pro en Windows">
+
+<img src="docs/capturas/captura-02.png" width="480" alt="ECSend Pro en Windows, segunda vista">
+
+<sub>
+Imágenes de la app instalada (8.9.1, 1359×767). Los originales están en
+`Imagenes/CAPTURAS/`.
+</sub>
+
 ## Documentación
 
 | Documento | Para qué |

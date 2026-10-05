@@ -8,4 +8,9 @@ build/png/
 npm-debug.log*
 Thumbs.db
 .DS_Store
+desktop.ini
 .env
+
+# Capturas crudas del escritorio: los originales se quedan en local. Al repo van
+# las copias limpias de docs/capturas/, que son las que referencia el README.
+Imagenes/
