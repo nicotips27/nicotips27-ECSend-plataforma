@@ -127,7 +127,10 @@ function runSmokeTest(window) {
     if (cspViolations.length) console.log(`SMOKE_CSP_VIOLATIONS ${JSON.stringify(cspViolations.slice(0, 8))}`);
   };
 
+  let finished = false;
   const fail = (reason) => {
+    if (finished) return;
+    finished = true;
     console.log(`SMOKE_FAIL ${reason}`);
     dump();
     app.exit(1);
@@ -206,6 +209,112 @@ function runSmokeTest(window) {
     });
   })()`;
 
+  /**
+   * Auditoria de los botones de la pagina.
+   *
+   * El sitio usa 35 atributos on* inline. Con la CSP de escritorio, un
+   * script-src sin 'unsafe-hashes' los BLOQUEA en silencio: la app carga, el
+   * smoke test pasa, y ningun boton responde. Por eso esta auditoria hace dos
+   * cosas: comprueba que cada handler este permitido por sha256 en la CSP, y
+   * despues dispara el evento de cada uno con las funciones del sitio
+   * stubbeadas, para confirmar que el handler realmente corre.
+   */
+  const buttonAudit = `(async () => {
+    const violations = [];
+    document.addEventListener('securitypolicyviolation', (e) =>
+      violations.push(e.violatedDirective + ' :: ' + (e.sample || '')), true);
+
+    const csp = (document.querySelector('meta[http-equiv="Content-Security-Policy"]') || {}).content || '';
+    const allowed = new Set(csp.match(/'sha256-[A-Za-z0-9+/=_-]+'/g) || []);
+
+    const sha256 = async (text) => {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      const bytes = new Uint8Array(digest);
+      let bin = '';
+      for (const b of bytes) bin += String.fromCharCode(b);
+      return "sha256-" + btoa(bin);
+    };
+
+    const targets = [...document.querySelectorAll('*')].filter((el) =>
+      [...el.attributes].some((a) => /^on[a-z]+$/.test(a.name)));
+
+    // 1) Estatico: cada handler tiene que estar en la lista de la CSP.
+    const missing = [];
+    const codes = new Set();
+    for (const el of targets) {
+      for (const a of el.attributes) {
+        if (!/^on[a-z]+$/.test(a.name)) continue;
+        codes.add(a.value);
+        if (!allowed.has("'" + (await sha256(a.value)) + "'")) {
+          missing.push(a.name + "=" + a.value.slice(0, 40));
+        }
+      }
+    }
+
+    // 2) Vivo: click real en cada elemento, con el sitio stubbeado.
+    const calls = [];
+    const restore = [];
+    const stub = (obj, key, label) => {
+      const had = Object.prototype.hasOwnProperty.call(obj, key);
+      const prev = obj[key];
+      const replacement = function () { calls.push(label); };
+      try {
+        obj[key] = replacement;
+      } catch {
+        return false;
+      }
+      // location.reload es [LegacyUnforgeable]: la asignacion falla en silencio
+      // sin lanzar. Sin esta comprobacion se creeria que el stub funciono.
+      if (obj[key] !== replacement) return false;
+      restore.push(() => { try { if (had) obj[key] = prev; else delete obj[key]; } catch {} });
+      return true;
+    };
+
+    // Las funciones que el sitio expone en window y los handlers invocan.
+    for (const name of new Set(
+      [...codes].flatMap((c) => (c.match(/window\\.([A-Za-z0-9_$]+)/g) || []).map((s) => s.slice(7)))
+    )) {
+      stub(window, name, name);
+    }
+    // Los dos botones de galeria hacen .click() sobre un <input type=file>.
+    stub(HTMLInputElement.prototype, 'click', 'file-input.click');
+
+    let reloadStub = false;
+    try {
+      reloadStub = stub(window.location, 'reload', 'location.reload');
+    } catch { reloadStub = false; }
+
+    let clicked = 0;
+    let skipped = 0;
+    for (const el of targets) {
+      const attr = [...el.attributes].find((a) => /^on[a-z]+$/.test(a.name));
+      const code = attr.value;
+      const before = calls.length;
+      if (/location\\.reload/.test(code) && !reloadStub) { skipped++; continue; }
+      if (attr.name === 'onsubmit') {
+        el.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      } else if (attr.name === 'onkeypress' || attr.name === 'onkeydown') {
+        el.dispatchEvent(new KeyboardEvent(attr.name.slice(2), { key: 'Enter', bubbles: true }));
+      } else {
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      }
+      clicked++;
+      if (calls.length === before) return JSON.stringify({ ok: false, reason: 'handler sin ejecutar: ' + code });
+    }
+
+    for (const undo of restore.reverse()) { try { undo(); } catch {} }
+
+    return JSON.stringify({
+      ok: true,
+      handlers: targets.length,
+      unique: codes.size,
+      clicked,
+      skipped,
+      calls: calls.length,
+      violations
+    });
+  })()`;
+
   window.webContents.once('did-finish-load', async () => {
     try {
       // Se espera a que corran los scripts diferidos y las inicializaciones
@@ -215,6 +324,24 @@ function runSmokeTest(window) {
         `document.fonts.ready.then(() => new Promise((r) => setTimeout(r, 4000)))`
       );
       const report = await window.webContents.executeJavaScript(probe);
+
+      let buttons;
+      try {
+        buttons = JSON.parse(await window.webContents.executeJavaScript(buttonAudit));
+      } catch (err) {
+        fail(`la auditoria de botones no pudo correr: ${err.message}`);
+      }
+      if (!buttons.ok) {
+        fail(`botones: ${buttons.reason}`);
+      }
+      if (buttons.violations.length) {
+        fail(`botones: la CSP bloqueo ${buttons.violations.length} handler(s) -> ${JSON.stringify(buttons.violations.slice(0, 3))}`);
+      }
+      console.log(
+        `SMOKE_BUTTONS ok ${buttons.handlers} handlers on* (${buttons.unique} unicos), ` +
+        `${buttons.clicked} clickados en vivo, ${buttons.skipped} auditados por hash, ` +
+        `${buttons.calls} llamadas, 0 violaciones CSP`
+      );
 
       // Prueba de descarga de verdad. El sitio, al recibir un archivo por el
       // DataChannel, reconstruye un Blob y dispara un <a download>. Electron
@@ -277,6 +404,37 @@ function waitForFile(folder, name, timeoutMs) {
     };
     tick();
   });
+}
+
+/**
+ * Sonda opt-in (EC_PROBE_CODE=1): espera a que el sitio complete el handshake con
+ * PeerJS Cloud y publique el codigo de 6 digitos. Necesita internet, asi que no
+ * forma parte del smoke test: solo sirve para ver si la senalizacion arranca.
+ */
+function runCodeProbe(window) {
+  const started = Date.now();
+  const read = () =>
+    window.webContents.executeJavaScript(`(() => {
+      const code = (document.getElementById('my-code')?.textContent || '').trim();
+      const timer = (document.getElementById('code-timer-text')?.textContent || '').trim();
+      const canvas = document.getElementById('qr-canvas');
+      return JSON.stringify({
+        code, timer,
+        qr: canvas ? (canvas.tagName === 'CANVAS' ? canvas.width + 'x' + canvas.height : 'svg') : null,
+        peer: typeof window.myPeer !== 'undefined' && window.myPeer ? window.myPeer.id : null
+      });
+    })()`).catch((e) => JSON.stringify({ error: e.message }));
+
+  const tick = async () => {
+    const info = JSON.parse(await read());
+    // El sitio lo muestra agrupado en 3+3 con guion: "827-048"
+    const listo = /^\d{3}-\d{3}$/.test(info.code);
+    console.log(`PROBE_CODE ${listo ? 'ok' : 'wait'} ${Date.now() - started}ms ${JSON.stringify(info)}`);
+    if (listo) { app.exit(0); return; }
+    if (Date.now() - started > 35000) { app.exit(2); return; }
+    setTimeout(tick, 2000);
+  };
+  setTimeout(tick, 3000);
 }
 
 function createTray() {
@@ -382,6 +540,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     if (!SMOKE) createTray();
     if (SMOKE) runSmokeTest(win);
+    if (process.env.EC_PROBE_CODE === '1') runCodeProbe(win);
 
     app.on('activate', () => showWindow());
   }).catch((err) => {

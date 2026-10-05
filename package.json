@@ -1,7 +1,7 @@
 {
   "name": "ecsendpro-desktop",
   "productName": "ECSend Pro",
-  "version": "8.9.0",
+  "version": "8.9.1",
   "description": "Transferencia de archivos P2P entre dispositivos, directo y sin servidores. Estalingrado Corp.",
   "author": {
     "name": "Estalingrado Corp",
@@ -21,6 +21,7 @@
     "verify": "npm run lint && npm run smoke",
     "lint": "node tools/lint.mjs",
     "smoke": "node tools/smoke.mjs",
+    "probe:code": "node tools/probe-code.mjs",
     "dist": "electron-builder --win --x64 --publish never",
     "dist:dir": "electron-builder --win --x64 --dir --publish never"
   },

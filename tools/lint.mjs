@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { auditCsp } from './csp-hashes.mjs';
 
 const exec = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -80,6 +81,22 @@ try {
 } catch (err) {
   failed++;
   console.log(`  FAIL styles.css: ${err.message}. Compilar con: npm run css`);
+}
+
+/**
+ * La CSP tiene que habilitar los handlers on* del sitio por hash. Sin esto la
+ * app arranca, el smoke test pasa y NINGUN boton responde: el CSP bloquea los
+ * atributos on* en silencio. Es el bug mas caro de esta app (35 handlers).
+ */
+try {
+  const html = await readFile(path.join(ROOT, 'src/renderer/index.html'), 'utf8');
+  const audit = auditCsp(html);
+  if (!audit.ok) throw new Error(audit.reason);
+  console.log(`  ok   CSP: ${audit.total} handlers on* habilitados por sha256 (${audit.hashes} unicos)`);
+} catch (err) {
+  failed++;
+  console.log(`  FAIL CSP: ${err.message}`);
+  console.log('       Reimportar con: npm run import:site');
 }
 
 /** Los .ico tienen que estar antes de empaquetar. */

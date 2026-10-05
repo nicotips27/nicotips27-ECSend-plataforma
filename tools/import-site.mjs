@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildCsp, handlerHashes } from './csp-hashes.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const UPSTREAM = path.join(ROOT, '.upstream');
@@ -24,20 +25,14 @@ const RENDERER = path.join(ROOT, 'src', 'renderer');
  * - script-src: 'self' mas cdn.jsdelivr.net porque Trystero se carga por
  *   import() dinamico y no tiene bundle standalone (sus relays son remotos, el
  *   descubrimiento ya requiere internet por diseno)
+ * - script-src-attr: el sitio usa 35 atributos on* inline (onclick, onsubmit,
+ *   onkeypress). Sin esto la CSP los BLOQUEA en silencio y ningun boton
+ *   responde. Se listan los sha256 de esos handlers en vez de 'unsafe-inline'
+ *   porque el sitio mete texto remoto en innerHTML sin escapar.
+ *
+ * El texto de la CSP se arma con buildCsp(HTML_FINAL), despues de todas las
+ * ediciones, para que los hashes correspondan al HTML que se escribe.
  */
-const CSP = [
-  "default-src 'none'",
-  "script-src 'self' https://cdn.jsdelivr.net",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://static.wixstatic.com",
-  "font-src 'self' data:",
-  "media-src 'self' blob:",
-  "connect-src 'self' https: wss:",
-  "form-action 'none'",
-  "frame-src 'none'",
-  "object-src 'none'",
-  "base-uri 'none'"
-].join('; ');
 
 const HTML_EDITS = [
   {
@@ -49,6 +44,26 @@ const HTML_EDITS = [
     label: 'Google Fonts -> Inter vendorizado',
     from: "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');",
     to: "@import url('vendor/fonts/inter.css');"
+  },
+  {
+    label: 'viewport-fit=cover fuera (en Electron empuja el contenido bajo la barra de titulo nativa)',
+    from: '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">',
+    to: '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">'
+  },
+  {
+    label: 'padding-top de 44px para el titleBarOverlay de Electron',
+    from: '            touch-action: pan-y;\n        }',
+    to: '            touch-action: pan-y;\n            /* Espacio para titleBarOverlay de Electron en Windows (44px fijo) */\n            padding-top: 44px;\n        }'
+  },
+  {
+    label: 'fondo dinámico arranca abajo de la barra de título',
+    from: '<div id="dynamic-bg" class="fixed inset-0 z-[-1]',
+    to: '<div id="dynamic-bg" class="fixed left-0 right-0 bottom-0 top-[44px] z-[-1]'
+  },
+  {
+    label: 'splash arranca abajo de la barra de título',
+    from: '<div id="splash" class="fixed inset-0 z-[100]',
+    to: '<div id="splash" class="fixed left-0 right-0 bottom-0 top-[44px] z-[100]'
   },
   {
     label: 'lucide UMD -> vendor',
@@ -84,11 +99,6 @@ const HTML_EDITS = [
     label: 'manifiesto PWA (innecesario en escritorio)',
     from: '<link rel="manifest" href="./manifest.webmanifest">',
     to: ''
-  },
-  {
-    label: 'CSP de escritorio',
-    from: '<meta name="theme-color" content="#09090b">',
-    to: `<meta name="theme-color" content="#09090b">\n    <meta http-equiv="Content-Security-Policy" content="${CSP}">`
   }
 ];
 
@@ -132,6 +142,20 @@ async function main() {
     console.error(`\nEl <style> del sitio perdio: ${missingStyle.join(', ')}`);
     process.exit(1);
   }
+
+  // La CSP va al final y se arma con el HTML ya editado: los sha256 de los
+  // handlers on* tienen que calzar con el HTML exacto que se escribe.
+  const hashes = handlerHashes(out);
+  if (!hashes.length) {
+    console.error('\nEl sitio ya no tiene atributos on* inline. Revisar el sitio y la CSP.');
+    process.exit(1);
+  }
+  out = applyEdit(out, {
+    label: 'CSP de escritorio (script-src-attr con hashes de los handlers on*)',
+    from: '<meta name="theme-color" content="#09090b">',
+    to: `<meta name="theme-color" content="#09090b">\n    <meta http-equiv="Content-Security-Policy" content="${buildCsp(out)}">`
+  });
+  console.log(`  CSP: ${hashes.length} sha256 para los handlers on* del sitio`);
 
   const leftovers = out.match(/(?:src|href)="https:\/\/(?:unpkg|cdnjs|cdn\.tailwindcss)/g) ?? [];
   if (leftovers.length) {

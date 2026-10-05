@@ -10,6 +10,17 @@ La versión acompaña a la del sitio web (`Estalingradocorp/ECsendpro`).
 
 ## [No publicado]
 
+### Pendiente
+- La **8.9.0 nunca se publicó en GitHub Releases** (falta token válido de
+  `Estalingradocorp`). La 8.9.1 supersede a la 8.9.0: publicar `v8.9.1`.
+
+---
+
+## [8.9.1] — 2026-10-04
+
+> La 8.9.0 se instaló pero quedó con dos defectos que el usuario reportaba. Esta
+> versión es la primera instalable de verdad.
+
 ### Corregido
 - **Barra de título nativa tapaba la interfaz** (dos correcciones sucesivas):
   - `viewport-fit=cover` eliminado del `viewport`; hacía que el contenido se
@@ -18,6 +29,60 @@ La versión acompaña a la del sitio web (`Estalingradocorp/ECsendpro`).
     solo existe en iOS Safari: en Windows devolvía su valor de reserva y el
     contenido quedaba bajo los botones de cerrar/minimizar/maximizar.
   - `splash` y `dynamic-bg` pasaron de `inset-0` a `top-[44px]`.
+- 🔴 **CRÍTICO — ningún botón de la app respondía.** El sitio de ECSend Pro
+  usa **35 atributos `on*` inline** (`onclick`, `onsubmit`, `onkeypress`): enviar,
+  aceptar, recargar página, elegir carpeta, cambiar de vista, cerrar modales, QR,
+  chat, menú, ajustes. La CSP de escritorio que se agregó en la 8.9.0 declaraba
+  `script-src 'self' https://cdn.jsdelivr.net` **sin hashes**, así que Chromium
+  **bloqueaba los 35 handlers en silencio**: la app arrancaba, la interfaz se ve
+  completa, y al hacer clic no pasaba absolutamente nada.
+
+  **Causa:** CSP bloquea los handlers inline salvo que la fuente incluya
+  `'unsafe-inline'`, un nonce, o un hash `sha256` **con** `'unsafe-hashes'`.
+
+  **Fix:** `script-src-attr 'unsafe-hashes'` con el `sha256` de los 28 handlers
+  únicos del sitio. Se eligió hashes y no `'unsafe-inline'` a propósito: el sitio
+  mete texto remoto (nombres de archivo que envía el peer, mensajes de chat) en
+  `innerHTML` sin escapar, así que con `'unsafe-inline'` un nombre de archivo
+  malicioso podría ejecutar script. Con hashes solo corre el código que el sitio
+  ya trae escrito.
+
+  **Cómo se detectó:** un smoke test que solo comprueba "la ventana carga" no lo
+  ve, porque la violación de CSP solo se dispara al hacer clic. Se reprodujo
+  primero (35 handlers, `blocked` en todos) y después se arregló.
+
+- `npm run import:site` **ya no rompe el layout de escritorio.** Las correcciones
+  de la 8.9.0 (quitar `viewport-fit=cover`, `padding-top: 44px`, `splash` y
+  `dynamic-bg` con `top-[44px]`) se habían hecho a mano sobre el fork: un
+  reimport las borraba en silencio. Ahora son ediciones con ancla exacta en
+  `tools/import-site.mjs`, y el `index.html` sale **byte a byte idéntico** al
+  que se tenía.
+
+### Agregado
+- **`SMOKE_BUTTONS` en el smoke test.** Recorre los 35 handlers `on*` de la
+  página: primero comprueba que cada uno tenga su `sha256` en la CSP, después
+  **dispara el evento real de cada uno** (con las funciones del sitio
+  stubbeadas, para no abrir diálogos ni navegar) y verifica que el handler haya
+  corrido. El único que no se puede stubbear es `window.location.reload()`
+  (`location` es *unforgeable*), y queda auditado por hash.
+  Resultado actual: `SMOKE_BUTTONS ok 35 handlers on* (28 unicos), 34 clickados
+  en vivo, 1 auditados por hash, 34 llamadas, 0 violaciones CSP`.
+  Verificado que **falla** si se rompe la CSP, que es justo el bug que pasó
+  desapercibido en la 8.9.0.
+- `tools/csp-hashes.mjs`: escanea el HTML, calcula los `sha256` de los handlers
+  inline (decodificando entidades HTML, como hace el navegador) y arma la CSP.
+  Lo usan `import-site` y `lint`.
+- `npm run lint` ahora falla si algún handler `on*` se queda sin hash en la CSP, o
+  si alguien reintroduce `'unsafe-inline'` en `script-src`.
+- `npm run probe:code`: sonda **opt-in** de señalización P2P. Levanta la app y
+  espera a que el sitio complete el handshake con PeerJS Cloud y publique el
+  código de 6 dígitos, el QR y el temporizador rotativo.
+  ```
+  PROBE_CODE ok 3001ms {"code":"832-458","timer":"178s","qr":"200x200"}
+  ```
+  Verificado sobre la app instalada: `PROBE_CODE ok 3004ms {"code":"565-604",...}`.
+  **No está en el smoke test a propósito**: necesita internet, y en una máquina
+  sin red fallaría por el motivo equivocado.
 
 ---
 
@@ -105,4 +170,5 @@ smoke test original:
 - La cámara no se ha probado con un dispositivo real en el entorno de build.
 
 [No publicado]: https://github.com/nicotips27/ECsendpro-desktop/compare/5d16e27...HEAD
+[8.9.1]: https://github.com/nicotips27/ECsendpro-desktop/releases/tag/v8.9.1
 [8.9.0]: https://github.com/nicotips27/ECsendpro-desktop/releases/tag/v8.9.0
