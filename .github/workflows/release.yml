@@ -1,0 +1,73 @@
+name: release
+
+# Un tag v* dispara el build del instalador y publica la GitHub Release con el
+# .exe, su .blockmap y el latest.yml que necesita electron-updater.
+# El workflow corre sobre el repo entero: si el tag apunta a un commit viejo,
+# usa ese commit, no main.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # El postinstall de Electron lo bloquea npm 11; hay que correrlo a mano o
+      # electron.exe no existe y el build falla mas adelante, en un punto que no
+      # dice "te falta electron".
+      - name: Ejecutar el postinstall de Electron
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "node_modules\electron\dist\electron.exe")) {
+            Write-Host "electron.exe no esta: corriendo install.js a mano"
+            node node_modules\electron\install.js
+          }
+
+      - name: Regenerar iconos e iconos del sitio
+        run: npm run icons
+
+      - name: Compilar Tailwind
+        run: npm run css
+
+      # Falla si la CSP dejo un handler on* sin hash (la app arrancaria pero
+      # ningun boton responderia) o si el CSS compilado quedo vacio.
+      - name: Lint + auditoria de la CSP
+        run: npm run lint
+
+      # Descarga de verdad a disco + los 35 handlers on* ejecutandose.
+      - name: Smoke test
+        run: npm run smoke
+
+      - name: Build del instalador y publicacion de la release
+        run: npx electron-builder --win --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Subir artefactos si la publicacion falla
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ecsendpro-installer
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
+          retention-days: 7

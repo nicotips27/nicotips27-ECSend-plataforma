@@ -517,6 +517,15 @@ function registerIpc() {
 }
 
 if (!app.requestSingleInstanceLock()) {
+  // La app instalada y la de desarrollo comparten userData (las dos se llaman
+  // "ECSend Pro"), asi que el cerrojo tambien las excluye entre si. Sin este
+  // mensaje el segundo proceso salia con codigo 0 sin hacer nada: en el smoke
+  // test parecia "todo bien" y en la vida real parecia "la app no arranca".
+  console.error(
+    '[ECSendPro] Ya hay otra instancia corriendo. Cerrala o usa el icono de la ' +
+    'bandeja para abrirla. La instancia nueva se cierra sin hacer nada.'
+  );
+  if (SMOKE) console.log('SMOKE_FAIL otra instancia de ECSend Pro ya esta corriendo');
   app.quit();
 } else {
   const { registerSchemePrivileges, serveRenderer } = require('./protocol');

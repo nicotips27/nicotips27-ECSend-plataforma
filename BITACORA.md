@@ -2,7 +2,7 @@
 
 **Proyecto:** ECSend Pro — Cliente nativo Windows  
 **Empresa:** Estalingrado Corp  
-**Repositorio:** https://github.com/nicotips27/ECsendpro-desktop  
+**Repositorio:** https://github.com/nicotips27/nicotips27-ECSend-plataforma  
 **Sitio web de referencia:** https://estalingradocorp.github.io/ECsendpro/  
 **Versión actual:** 8.9.1 (sitio web v8.9 + correcciones de escritorio)
 
@@ -46,7 +46,48 @@ El sitio web original (`estalingradocorp.github.io/ECsendpro/`) es una SPA de 10
 | 2026-10-03 | `fb2b865` | **Fase 4** (intento 1) | `padding-top` con `env()` — no funcionó en Windows |
 | 2026-10-03 | `5d16e27` | **Fase 4** (intento 2) | `viewport-fit=cover` fuera, padding 44px fijo, splash `top-[44px]` |
 | 2026-10-04 | — | **Fase 5** | 🔴 Los 35 botones `on*` inline estaban bloqueados por la CSP. `script-src-attr 'unsafe-hashes'` + 28 sha256. Auditoría `SMOKE_BUTTONS` |
+| 2026-10-04 | `47ba15f` | Commit del fix | Los 35 handlers `on*` + `csp-hashes.mjs` + `probe-code.mjs` |
+| 2026-10-05 | — | Publicación | Subido a `nicotips27/nicotips27-ECSend-plataforma`. CI de releases **creado de verdad** (el directorio estaba vacío). `publish.repo` actualizado. Mensaje de "ya hay otra instancia" |
 | 2026-10-04 | — | Documentación | README, BITACORA, CHANGELOG, export de sesión |
+
+### Cambio de repositorio
+
+El remoto `origin` original era `nicotips27/ECsendpro-desktop`. A partir de esta
+fecha el remoto de trabajo es **`nicotips27/nicotips27-ECSend-plataforma`** (repo
+nuevo, público, antes vacío). Se agregó como remoto `plataforma`:
+
+```bash
+git remote add plataforma https://github.com/nicotips27/nicotips27-ECSend-plataforma.git
+git push -u plataforma main
+```
+
+`publish.repo` en `electron-builder.yml` también apunta al repo nuevo, porque de
+eso dependen tanto `electron-updater` como el `latest.yml` de las releases.
+
+### Lo que faltaba de verdad: el CI de releases
+
+`.github/workflows/` estaba **vacío**, y el README y esta bitácora afirmaban que
+había un workflow de releases. No lo había. Ahora existe
+`.github/workflows/release.yml`: un tag `v*` corre `npm ci` → postinstall de
+Electron → `icons` → `css` → **`lint`** → **`smoke`** → instalador con
+`--publish always`. Los dos pasos que importan son los que antes nunca se
+corrían: `lint` falla si un handler `on*` se queda sin hash en la CSP, y `smoke`
+falla si algún botón no responde. Sin ellos, un tag podía publicar un
+instalador con la app entera muda.
+
+### El cerrojo de instancia única se comía los diagnósticos
+
+Instalar el `.exe` con `runAfterFinish: true` abre la app, y esa app se queda
+viva (cerrar la ventana solo la esconde). Como la app instalada y la de
+desarrollo comparten `userData` —las dos se llaman "ECSend Pro"—, el cerrojo de
+instancia única también las excluye entre sí. La segunda salía con **código 0 y
+sin imprimir nada**, así que:
+
+- el smoke test del repo reportaba `el proceso salio con codigo 0 sin resultado`
+- el usuario veía que al abrir la app "no pasa nada"
+
+Ahora `main.js` dice qué está pasando, y en modo smoke falla con
+`SMOKE_FAIL otra instancia de ECSend Pro ya esta corriendo`.
 
 ### Lección registrada (Fase 5): el bug más caro de la app
 
@@ -414,12 +455,13 @@ node tools/smoke.mjs dist/win-unpacked/ECSendPro.exe
 git add -A && git commit -m "tipo(ámbito): mensaje"
 
 # Release (tag dispara CI)
-git tag v8.9.1 && git push origin v8.9.1
-# → GitHub Actions: build windows-latest → upload .exe + blockmap + latest.yml → Release
+git tag v8.9.1 && git push plataforma v8.9.1
+# → GitHub Actions: lint + smoke → build windows-latest → Release con .exe + blockmap + latest.yml
 
 # Transferir repo a Estalingradocorp (cuando haya certificado)
-gh repo transfer nicotips27/ECsendpro-desktop Estalingradocorp
+gh repo transfer nicotips27/nicotips27-ECSend-plataforma Estalingradocorp
 # Luego: editar electron-builder.yml → publish.owner: Estalingradocorp
+#       y actualizar el remoto de git
 ```
 
 ---

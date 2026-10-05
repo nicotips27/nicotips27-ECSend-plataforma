@@ -5,6 +5,7 @@ Programa nativo de escritorio para **ECSend Pro**, la app P2P de transferencia d
 Los archivos viajan directo de un dispositivo a otro por **WebRTC DataChannel** (cifrado DTLS/SRTP). No pasa nada por servidores de la app.
 
 - **Sitio web:** https://estalingradocorp.github.io/ECsendpro/
+- **Repositorio:** https://github.com/nicotips27/nicotips27-ECSend-plataforma
 - **Empresa:** Estalingrado Corp
 - **Licencia:** MIT
 
@@ -189,6 +190,26 @@ reinstalar no los pierda).
 > El instalador no está firmado con certificado. Windows SmartScreen va a mostrar
 > "editor desconocido" la primera vez. Para eliminarlo hace falta un code-signing
 > certificate.
+
+## Releases
+
+`.github/workflows/release.yml` construye y publica la release cuando haces push
+de un tag:
+
+```bash
+git tag v8.9.1 && git push plataforma v8.9.1
+```
+
+El pipeline corre `lint` y `smoke` **antes** de empaquetar, así que un tag no
+puede publicar un instalador con los botones mudos o la CSP rota. Si algo falla,
+el `.exe` queda subido como artefacto del run.
+
+> La app instalada y la de desarrollo comparten `userData` (las dos se llaman
+> "ECSend Pro"), así que el cerrojo de instancia única también las excluye entre
+> sí: si ya tenés una corriendo, la otra no arranca. Aparece un aviso en consola
+> y, en el smoke test, un `SMOKE_FAIL otra instancia de ECSend Pro ya esta
+> corriendo`. Cerrá la que esté abierta (o quitá el proceso del Administrador de
+> tareas) antes de probar la otra.
 
 ## Notas
 

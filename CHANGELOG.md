@@ -69,6 +69,20 @@ La versión acompaña a la del sitio web (`Estalingradocorp/ECsendpro`).
   en vivo, 1 auditados por hash, 34 llamadas, 0 violaciones CSP`.
   Verificado que **falla** si se rompe la CSP, que es justo el bug que pasó
   desapercibido en la 8.9.0.
+- **CI de releases en `.github/workflows/release.yml`.** El directorio estaba
+  **vacío**: el README y la bitácora afirmaban que existía. Ahora un tag `v*`
+  dispara `npm ci` → postinstall de Electron → `icons` → `css` → **`lint` (que
+  audita la CSP)** → **`smoke` (que hace clic en los 35 botones)** → instalador
+  con `--publish always`. Si algo falla, sube `.exe`, `.blockmap` y `latest.yml`
+  como artefactos.
+- **Mensaje claro cuando ya hay otra instancia corriendo.** La app instalada y
+  la de desarrollo comparten `userData` (las dos se llaman "ECSend Pro"), así que
+  el cerrojo de instancia única también las excluye entre sí. La segunda salía
+  con código 0 **sin decir nada**: en el smoke test parecía que todo estaba bien
+  y en la vida real parecía que la app no arrancaba. Ahora lo dice, y en modo
+  smoke falla con `SMOKE_FAIL otra instancia de ECSend Pro ya esta corriendo`.
+  Es uno de los diagnósticos más confusos que aparecen al instalar y probar en la
+  misma máquina, y salió justo de hacer eso.
 - `tools/csp-hashes.mjs`: escanea el HTML, calcula los `sha256` de los handlers
   inline (decodificando entidades HTML, como hace el navegador) y arma la CSP.
   Lo usan `import-site` y `lint`.
@@ -169,6 +183,6 @@ smoke test original:
   actualizar `publish.owner` en `electron-builder.yml`.
 - La cámara no se ha probado con un dispositivo real en el entorno de build.
 
-[No publicado]: https://github.com/nicotips27/ECsendpro-desktop/compare/5d16e27...HEAD
-[8.9.1]: https://github.com/nicotips27/ECsendpro-desktop/releases/tag/v8.9.1
-[8.9.0]: https://github.com/nicotips27/ECsendpro-desktop/releases/tag/v8.9.0
+[No publicado]: https://github.com/nicotips27/nicotips27-ECSend-plataforma/compare/5d16e27...HEAD
+[8.9.1]: https://github.com/nicotips27/nicotips27-ECSend-plataforma/releases/tag/v8.9.1
+[8.9.0]: https://github.com/nicotips27/nicotips27-ECSend-plataforma/releases/tag/v8.9.0
